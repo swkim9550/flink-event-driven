@@ -1,0 +1,66 @@
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sds.cloud.platform.event.document.LedgerDataDocumentField;
+import com.sds.cloud.platform.event.model.LedgerData;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.connectors.elasticsearch.ElasticsearchSinkFunction;
+import org.apache.flink.streaming.connectors.elasticsearch.RequestIndexer;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.client.Requests;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+
+import java.io.IOException;
+
+@Slf4j
+public class CustomElasticSearchSinkFunction implements ElasticsearchSinkFunction<Tuple2<String,String>> , LedgerDataDocumentField {
+
+    private final ObjectMapper mapper;
+
+    public CustomElasticSearchSinkFunction() {
+        this.mapper = new ObjectMapper();
+    }
+
+    //TODO LedgerData
+    public IndexRequest createIndexRequest(Tuple2<String,String> record) throws IOException {
+        //log.info("test key {} ",record.key());
+        //LedgerData ledgerData = mapper.readValue(record.f1 ,LedgerData.class);
+
+        LedgerData ledgerData = new LedgerData();
+        ledgerData.setId("test");
+        String documentId = ledgerData.getId();
+        return Requests.indexRequest()
+                //.id(documentId)
+                .index("flink-test-index")
+                .source(newSource(record.f0 ,"test-key", ledgerData));
+    }
+
+    @Override
+    public void process(Tuple2<String,String> record, RuntimeContext ctx, RequestIndexer indexer) {
+        try {
+            indexer.add(createIndexRequest(record));
+        } catch (IOException e) {
+            log.error(e.toString());
+            e.printStackTrace();
+        }
+    }
+
+    public XContentBuilder newSource(String topic, String key, LedgerData record) throws IOException {
+        return XContentFactory.jsonBuilder()
+                .startObject()
+                .field(FIELD_TOPIC,         topic)
+                .field(FIELD_KEY,           key)
+                .field(FIELD_EVENT_TIME,    record.getTimestamp())
+                .field(FIELD_EVENT_ID,      record.getId())
+                .field(FIELD_CONTRACT_ID,   record.getContractId())
+                .field(FIELD_ZONE_ID,       record.getZoneId())
+                .field(FIELD_PROJECT_ID,    record.getProjectId())
+                .field(FIELD_USER_ID,       record.getUserId())
+                .field(FIELD_RESOURCE_ID,   record.getResourceId())
+                .field(FIELD_RESOURCE_NAME, record.getResourceName())
+                .field(FIELD_RESOURCE_TYPE, record.getResourceType())
+                .endObject();
+    }
+
+}
